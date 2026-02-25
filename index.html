@@ -82,11 +82,43 @@
 
         if (!quizzes || quizzes.length === 0) {
             app.innerHTML = `
-                <div class="text-center py-20 fade-in">
-                    <div class="text-5xl mb-4">📝</div>
-                    <h2 class="text-xl font-semibold text-white mb-2">Niciun test creat</h2>
-                    <p class="text-gray-400 mb-6">Creează primul tău test din text sau imagine</p>
-                    <a href="#/create" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-3 rounded-xl transition-colors inline-block">Creează test</a>
+                <div class="fade-in">
+                    <div class="text-center pt-8 pb-12">
+                        <h1 class="text-3xl font-bold text-white mb-2">TeacherTest <span class="text-indigo-400">Pro</span></h1>
+                        <p class="text-gray-400 text-sm">Generează teste grilă din text sau imagine cu AI</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+                        <div class="bg-gray-900/50 border border-gray-800 rounded-2xl p-5 text-center">
+                            <div class="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                            </div>
+                            <h3 class="text-sm font-medium text-white mb-1">AI generează</h3>
+                            <p class="text-xs text-gray-500">Lipești text sau încarci imagine, AI-ul creează întrebările</p>
+                        </div>
+                        <div class="bg-gray-900/50 border border-gray-800 rounded-2xl p-5 text-center">
+                            <div class="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                            </div>
+                            <h3 class="text-sm font-medium text-white mb-1">Elevii răspund</h3>
+                            <p class="text-xs text-gray-500">Trimiți un link sau QR code, elevii completează pe telefon</p>
+                        </div>
+                        <div class="bg-gray-900/50 border border-gray-800 rounded-2xl p-5 text-center">
+                            <div class="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                            </div>
+                            <h3 class="text-sm font-medium text-white mb-1">Rezultate live</h3>
+                            <p class="text-xs text-gray-500">Vezi scorurile în timp real pe dashboard</p>
+                        </div>
+                    </div>
+
+                    <div class="text-center">
+                        <a href="#/create" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-xl transition-colors inline-flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Creează primul test
+                        </a>
+                        <p class="text-xs text-gray-600 mt-3">Durează sub 30 de secunde</p>
+                    </div>
                 </div>`;
             return;
         }
@@ -95,33 +127,47 @@
         const { data: subs } = await sb.from('submissions').select('quiz_id');
         const countMap = {};
         (subs || []).forEach(s => { countMap[s.quiz_id] = (countMap[s.quiz_id] || 0) + 1; });
+        const totalSubs = (subs || []).length;
 
         let rows = quizzes.map(q => {
             const count = countMap[q.id] || 0;
             const date = new Date(q.created_at).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
             return `
-                <div class="flex items-center justify-between p-4 bg-gray-900 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors fade-in">
-                    <div class="flex-1 min-w-0">
-                        <a href="#/quiz/${q.id}" class="text-white font-medium hover:text-indigo-400 transition-colors">${q.title}</a>
-                        <div class="flex items-center gap-3 mt-1">
-                            <span class="text-xs text-gray-500">${q.questions.length} intrebari</span>
-                            <span class="text-xs text-gray-500">${q.difficulty}</span>
-                            <span class="text-xs text-gray-500">${date}</span>
+                <div class="group p-4 bg-gray-900/50 rounded-xl border border-gray-800 hover:border-indigo-500/30 transition-all fade-in">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1 min-w-0">
+                            <a href="#/quiz/${q.id}" class="text-white font-medium hover:text-indigo-400 transition-colors">${q.title}</a>
+                            <div class="flex items-center gap-3 mt-1.5">
+                                <span class="text-xs text-gray-500">${q.questions.length} întrebări</span>
+                                <span class="text-xs px-2 py-0.5 rounded-full ${q.difficulty === 'ușor' ? 'bg-green-900/30 text-green-400' : q.difficulty === 'mediu' ? 'bg-yellow-900/30 text-yellow-400' : 'bg-red-900/30 text-red-400'}">${q.difficulty}</span>
+                                <span class="text-xs text-gray-600">${date}</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="flex items-center gap-3 shrink-0 ml-4">
-                        <a href="#/quiz/${q.id}/results" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition-colors">${count} raspunsuri</a>
-                        <a href="#/quiz/${q.id}" class="text-xs bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 px-3 py-1.5 rounded-lg transition-colors">Detalii</a>
+                        <div class="flex items-center gap-2 shrink-0 ml-4">
+                            <a href="#/quiz/${q.id}/results" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                ${count}
+                            </a>
+                            <a href="#/quiz/${q.id}" class="text-xs bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 px-3 py-1.5 rounded-lg transition-colors">Detalii</a>
+                        </div>
                     </div>
                 </div>`;
         }).join('');
 
         app.innerHTML = `
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-lg font-semibold text-white">Testele tale</h2>
-                <span class="text-sm text-gray-500">${quizzes.length} teste</span>
-            </div>
-            <div class="space-y-3">${rows}</div>`;
+            <div class="fade-in">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Testele tale</h2>
+                        <p class="text-xs text-gray-500 mt-0.5">${quizzes.length} teste · ${totalSubs} răspunsuri total</p>
+                    </div>
+                    <a href="#/create" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Test nou
+                    </a>
+                </div>
+                <div class="space-y-3">${rows}</div>
+            </div>`;
     }
 
     // ==================== CREATE QUIZ ====================
@@ -366,11 +412,15 @@ Răspunde DOAR cu un JSON valid, fără alt text, în formatul:
 
                 <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
                     <p class="text-xs text-gray-500 mb-2">Link pentru elevi</p>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 mb-4">
                         <input id="test-link" type="text" value="${testLink}" readonly
                             class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-indigo-400 font-mono">
                         <button onclick="copyLink()" id="btn-copy"
                             class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded-lg transition-colors shrink-0">Copiază</button>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <img id="qr-code" class="w-32 h-32 rounded-lg" alt="QR Code">
+                        <p class="text-xs text-gray-500">Scanează cu telefonul<br>pentru a accesa testul</p>
                     </div>
                 </div>
 
@@ -393,6 +443,12 @@ Răspunde DOAR cu un JSON valid, fără alt text, în formatul:
 
         window._editQuiz = JSON.parse(JSON.stringify(quiz));
         window._editDirty = false;
+
+        // Generate QR code
+        const qrImg = document.getElementById('qr-code');
+        if (qrImg) {
+            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(testLink)}&bgcolor=030712&color=e0e7ff`;
+        }
     }
 
     function editQuestion(qi, val) { window._editQuiz.questions[qi].question = val; showSaveBtn(); }
