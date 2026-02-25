@@ -13,7 +13,7 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .option-btn { transition: all 0.2s ease; }
         .option-btn:hover { transform: translateX(4px); }
-        .option-btn.selected { border-color: #6366f1; background: rgba(99,102,241,0.1); }
+        .option-btn.selected { border-color: #818cf8; background: rgba(99,102,241,0.2); box-shadow: 0 0 14px rgba(99,102,241,0.45), inset 0 0 14px rgba(99,102,241,0.1); }
         .option-btn.correct { border-color: #22c55e; background: rgba(34,197,94,0.1); }
         .option-btn.wrong { border-color: #ef4444; background: rgba(239,68,68,0.1); }
         .loader { width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
@@ -29,11 +29,11 @@
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
     <!-- Header -->
-    <header class="border-b border-gray-800 py-4">
+    <header id="header" class="border-b border-gray-800 py-4">
         <div class="max-w-4xl mx-auto px-6 flex items-center justify-between">
-            <a href="#/" class="text-xl font-bold text-white">TeacherTest <span class="text-indigo-400">Pro</span></a>
+            <a href="#/dashboard" class="text-xl font-bold text-white">TeacherTest <span class="text-indigo-400">Pro</span></a>
             <nav id="nav-teacher" class="hidden flex items-center gap-3">
-                <a href="#/" class="text-sm text-gray-400 hover:text-white transition-colors">Teste</a>
+                <a href="#/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">Teste</a>
                 <a href="#/create" class="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors">+ Test nou</a>
             </nav>
         </div>
@@ -44,7 +44,7 @@
 
     <script>
     // ==================== CONFIG ====================
-    const ANTHROPIC_KEY = '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';
+    const API_PROXY = '/api/generate';
     const SUPABASE_URL = 'https://oviuoapruuwyjhvstmzs.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92aXVvYXBydXV3eWpodnN0bXpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMTE4NjcsImV4cCI6MjA4NzU4Nzg2N30.GxbWHmbllQ8sCrGoBxdf_koXla1gRSaHlPo0VPCKL3c';
 
@@ -56,20 +56,84 @@
     function getRoute() {
         const hash = location.hash.slice(1) || '/';
         const parts = hash.split('/').filter(Boolean);
-        return { path: '/' + parts[0] || '/', id: parts[1] || null, sub: parts[2] || null };
+        return { path: parts[0] ? '/' + parts[0] : '/', id: parts[1] || null, sub: parts[2] || null };
     }
 
     async function router() {
         const r = getRoute();
         const isStudentRoute = r.path === '/test';
-        nav.classList.toggle('hidden', isStudentRoute);
-        nav.classList.toggle('flex', !isStudentRoute);
+        const isLanding = r.path === '/';
+        nav.classList.toggle('hidden', isStudentRoute || isLanding);
+        nav.classList.toggle('flex', !isStudentRoute && !isLanding);
+        document.getElementById('header').classList.toggle('hidden', isLanding);
 
         if (r.path === '/test' && r.id) return renderStudentTest(r.id);
         if (r.path === '/create') return renderCreateQuiz();
         if (r.path === '/quiz' && r.id && r.sub === 'results') return renderResults(r.id);
         if (r.path === '/quiz' && r.id) return renderQuizPreview(r.id);
-        return renderDashboard();
+        if (r.path === '/dashboard') return renderDashboard();
+        return renderLanding();
+    }
+
+    // ==================== LANDING PAGE ====================
+    function renderLanding() {
+        app.style.maxWidth = 'none';
+        app.innerHTML = `
+            <div class="min-h-[calc(100vh-2rem)] flex flex-col items-center justify-center px-6 py-20 relative">
+                <!-- Background glow -->
+                <div class="fixed inset-0 -z-10 pointer-events-none">
+                    <div style="position:absolute;top:20%;left:50%;transform:translate(-50%,-50%);width:500px;height:500px;border-radius:50%;background:rgba(99,102,241,0.08);filter:blur(100px)"></div>
+                    <div style="position:absolute;bottom:20%;right:25%;width:350px;height:350px;border-radius:50%;background:rgba(34,197,94,0.05);filter:blur(80px)"></div>
+                </div>
+
+                <!-- Badge -->
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 mb-8 fade-in">
+                    <div class="w-2 h-2 rounded-full bg-indigo-400 pulse"></div>
+                    <span class="text-indigo-400 text-sm font-medium">Powered by AI</span>
+                </div>
+
+                <!-- Title -->
+                <h1 class="text-5xl md:text-6xl font-bold text-center mb-4 fade-in" style="line-height:1.1">
+                    TeacherTest <span class="text-indigo-400">Pro</span><br>
+                    <span class="text-2xl md:text-3xl font-semibold" style="background:linear-gradient(135deg,#818cf8,#6366f1,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Teste grila din orice text, in 30 de secunde</span>
+                </h1>
+
+                <p class="text-gray-400 text-lg text-center max-w-lg mb-14 fade-in" style="animation-delay:0.1s">
+                    Lipesti textul lectiei, AI-ul genereaza intrebarile, elevii raspund pe telefon. Tu vezi rezultatele live.
+                </p>
+
+                <!-- Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-3xl w-full mb-14">
+                    <div class="group p-6 bg-gray-900/50 border border-gray-800 rounded-2xl hover:border-indigo-500/30 transition-all fade-in" style="animation-delay:0.15s">
+                        <div class="w-11 h-11 bg-indigo-600/15 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-600/25 transition-colors">
+                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                        </div>
+                        <h3 class="text-white font-semibold mb-1.5">AI genereaza</h3>
+                        <p class="text-sm text-gray-500 leading-relaxed">Lipesti text sau incarci imagine din manual. AI-ul creeaza intrebari grila cu raspunsuri corecte.</p>
+                    </div>
+                    <div class="group p-6 bg-gray-900/50 border border-gray-800 rounded-2xl hover:border-indigo-500/30 transition-all fade-in" style="animation-delay:0.2s">
+                        <div class="w-11 h-11 bg-indigo-600/15 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-600/25 transition-colors">
+                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                        </div>
+                        <h3 class="text-white font-semibold mb-1.5">Elevii raspund</h3>
+                        <p class="text-sm text-gray-500 leading-relaxed">Trimiti un link, elevii completeaza de pe telefon. Fara cont, fara instalare — un click si gata.</p>
+                    </div>
+                    <div class="group p-6 bg-gray-900/50 border border-gray-800 rounded-2xl hover:border-indigo-500/30 transition-all fade-in" style="animation-delay:0.25s">
+                        <div class="w-11 h-11 bg-indigo-600/15 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-600/25 transition-colors">
+                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        </div>
+                        <h3 class="text-white font-semibold mb-1.5">Rezultate live</h3>
+                        <p class="text-sm text-gray-500 leading-relaxed">Vezi scorurile in timp real. Stii exact cine a raspuns, ce nota a luat si unde au gresit.</p>
+                    </div>
+                </div>
+
+                <!-- CTA -->
+                <a href="#/dashboard" class="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-lg transition-all fade-in" style="animation-delay:0.3s">
+                    Intra in aplicatie
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+                </a>
+                <p class="text-xs text-gray-600 mt-3 fade-in" style="animation-delay:0.35s">Gratuit — fara cont, fara card</p>
+            </div>`;
     }
 
     window.addEventListener('hashchange', router);
@@ -77,6 +141,7 @@
 
     // ==================== DASHBOARD ====================
     async function renderDashboard() {
+        app.style.maxWidth = '56rem';
         app.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto"></div></div>';
         const { data: quizzes } = await sb.from('quizzes').select('*').order('created_at', { ascending: false });
 
@@ -324,14 +389,9 @@ Răspunde DOAR cu un JSON valid, fără alt text, în formatul:
         }
 
         try {
-            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            const resp = await fetch(API_PROXY, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': ANTHROPIC_KEY,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: 'claude-sonnet-4-20250514',
                     max_tokens: 4096,
