@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeacherTest Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .fade-in { animation: fadeIn 0.4s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .option-btn { transition: all 0.2s ease; }
+        .option-btn:hover { transform: translateX(4px); }
+        .option-btn.selected { border-color: #6366f1; background: rgba(99,102,241,0.1); }
+        .option-btn.correct { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+        .option-btn.wrong { border-color: #ef4444; background: rgba(239,68,68,0.1); }
+        .loader { width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        textarea:focus, input:focus, select:focus { outline: none; box-shadow: 0 0 0 2px rgba(99,102,241,0.5); }
+        .edit-input { background: transparent; border: 1px solid transparent; padding: 2px 4px; border-radius: 4px; }
+        .edit-input:hover { border-color: #374151; }
+        .edit-input:focus { border-color: #6366f1; background: rgba(99,102,241,0.05); }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+    <!-- Header -->
+    <header class="border-b border-gray-800 py-4">
+        <div class="max-w-4xl mx-auto px-6 flex items-center justify-between">
+            <a href="#/" class="text-xl font-bold text-white">TeacherTest <span class="text-indigo-400">Pro</span></a>
+            <nav id="nav-teacher" class="hidden flex items-center gap-3">
+                <a href="#/" class="text-sm text-gray-400 hover:text-white transition-colors">Teste</a>
+                <a href="#/create" class="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors">+ Test nou</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- App container -->
+    <main id="app" class="max-w-4xl mx-auto px-6 py-8"></main>
+
+    <script>
+    // ==================== CONFIG ====================
+    const ANTHROPIC_KEY = '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';
+    const SUPABASE_URL = 'https://oviuoapruuwyjhvstmzs.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92aXVvYXBydXV3eWpodnN0bXpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMTE4NjcsImV4cCI6MjA4NzU4Nzg2N30.GxbWHmbllQ8sCrGoBxdf_koXla1gRSaHlPo0VPCKL3c';
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const app = document.getElementById('app');
+    const nav = document.getElementById('nav-teacher');
+
+    // ==================== ROUTER ====================
+    function getRoute() {
+        const hash = location.hash.slice(1) || '/';
+        const parts = hash.split('/').filter(Boolean);
+        return { path: '/' + parts[0] || '/', id: parts[1] || null, sub: parts[2] || null };
+    }
+
+    async function router() {
+        const r = getRoute();
+        const isStudentRoute = r.path === '/test';
+        nav.classList.toggle('hidden', isStudentRoute);
+        nav.classList.toggle('flex', !isStudentRoute);
+
+        if (r.path === '/test' && r.id) return renderStudentTest(r.id);
+        if (r.path === '/create') return renderCreateQuiz();
+        if (r.path === '/quiz' && r.id && r.sub === 'results') return renderResults(r.id);
+        if (r.path === '/quiz' && r.id) return renderQuizPreview(r.id);
+        return renderDashboard();
+    }
+
+    window.addEventListener('hashchange', router);
+    window.addEventListener('load', router);
+
+    // ==================== DASHBOARD ====================
+    async function renderDashboard() {
+        app.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto"></div></div>';
+        const { data: quizzes } = await sb.from('quizzes').select('*').order('created_at', { ascending: false });
+
+        if (!quizzes || quizzes.length === 0) {
+            app.innerHTML = `
+                <div class="text-center py-20 fade-in">
+                    <div class="text-5xl mb-4">📝</div>
+                    <h2 class="text-xl font-semibold text-white mb-2">Niciun test creat</h2>
+                    <p class="text-gray-400 mb-6">Creează primul tău test din text sau imagine</p>
+                    <a href="#/create" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-3 rounded-xl transition-colors inline-block">Creează test</a>
+                </div>`;
+            return;
+        }
+
+        // Get submission counts
+        const { data: subs } = await sb.from('submissions').select('quiz_id');
+        const countMap = {};
+        (subs || []).forEach(s => { countMap[s.quiz_id] = (countMap[s.quiz_id] || 0) + 1; });
+
+        let rows = quizzes.map(q => {
+            const count = countMap[q.id] || 0;
+            const date = new Date(q.created_at).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return `
+                <div class="flex items-center justify-between p-4 bg-gray-900 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors fade-in">
+                    <div class="flex-1 min-w-0">
+                        <a href="#/quiz/${q.id}" class="text-white font-medium hover:text-indigo-400 transition-colors">${q.title}</a>
+                        <div class="flex items-center gap-3 mt-1">
+                            <span class="text-xs text-gray-500">${q.questions.length} intrebari</span>
+                            <span class="text-xs text-gray-500">${q.difficulty}</span>
+                            <span class="text-xs text-gray-500">${date}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0 ml-4">
+                        <a href="#/quiz/${q.id}/results" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition-colors">${count} raspunsuri</a>
+                        <a href="#/quiz/${q.id}" class="text-xs bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 px-3 py-1.5 rounded-lg transition-colors">Detalii</a>
+                    </div>
+                </div>`;
+        }).join('');
+
+        app.innerHTML = `
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-semibold text-white">Testele tale</h2>
+                <span class="text-sm text-gray-500">${quizzes.length} teste</span>
+            </div>
+            <div class="space-y-3">${rows}</div>`;
+    }
+
+    // ==================== CREATE QUIZ ====================
+    let createState = { tab: 'text', imageBase64: null, imageType: null };
+
+    function renderCreateQuiz() {
+        createState = { tab: 'text', imageBase64: null, imageType: null };
+        app.innerHTML = `
+            <div class="max-w-2xl mx-auto fade-in">
+                <h2 class="text-lg font-semibold text-white mb-6">Creează test nou</h2>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Titlu test</label>
+                    <input id="quiz-title" type="text" placeholder="ex: Biologie cls. 9 — Celula"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-gray-100 text-sm placeholder-gray-600">
+                </div>
+
+                <div class="flex gap-2 mb-4">
+                    <button onclick="switchCreateTab('text')" id="tab-text"
+                        class="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white transition-colors">Text</button>
+                    <button onclick="switchCreateTab('image')" id="tab-image"
+                        class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors">Imagine / Screenshot</button>
+                </div>
+
+                <div id="input-text">
+                    <textarea id="source-text" rows="8"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-gray-100 text-sm leading-relaxed resize-vertical placeholder-gray-600"
+                        placeholder="Lipește aici textul lecției, capitolul din manual, notițele de curs..."></textarea>
+                </div>
+
+                <div id="input-image" class="hidden">
+                    <div id="drop-zone"
+                        class="w-full border-2 border-dashed border-gray-700 rounded-xl p-10 text-center cursor-pointer hover:border-indigo-500 transition-colors"
+                        onclick="document.getElementById('file-input').click()">
+                        <svg class="mx-auto mb-3 w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <p class="text-gray-400 text-sm">Click sau trage o imagine aici</p>
+                        <p class="text-gray-600 text-xs mt-1">PNG, JPG — max 20MB</p>
+                    </div>
+                    <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleCreateFile(event)">
+                    <div id="image-preview" class="hidden mt-4 relative">
+                        <img id="preview-img" class="w-full rounded-xl border border-gray-700">
+                        <button onclick="removeCreateImage()" class="absolute top-2 right-2 bg-gray-900/80 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors">✕</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4 mt-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Intrebari</label>
+                        <select id="num-questions" class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Dificultate</label>
+                        <select id="difficulty" class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100">
+                            <option value="ușor">Ușor</option>
+                            <option value="mediu" selected>Mediu</option>
+                            <option value="dificil">Dificil</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button onclick="generateAndSaveQuiz()" id="btn-generate"
+                    class="mt-6 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-6 rounded-xl transition-colors text-sm">
+                    Generează test
+                </button>
+
+                <div id="create-loading" class="hidden text-center py-10">
+                    <div class="loader mx-auto mb-3"></div>
+                    <p class="text-gray-400 text-sm">AI-ul generează întrebările...</p>
+                </div>
+            </div>`;
+
+        // Setup drag & drop
+        setTimeout(() => {
+            const dz = document.getElementById('drop-zone');
+            if (dz) {
+                ['dragenter','dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('border-indigo-500'); }));
+                ['dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('border-indigo-500'); }));
+                dz.addEventListener('drop', ev => { if (ev.dataTransfer.files[0]) processCreateFile(ev.dataTransfer.files[0]); });
+            }
+        }, 50);
+    }
+
+    function switchCreateTab(tab) {
+        createState.tab = tab;
+        document.getElementById('tab-text').className = tab === 'text'
+            ? 'px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white transition-colors'
+            : 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors';
+        document.getElementById('tab-image').className = tab === 'image'
+            ? 'px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white transition-colors'
+            : 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors';
+        document.getElementById('input-text').classList.toggle('hidden', tab !== 'text');
+        document.getElementById('input-image').classList.toggle('hidden', tab !== 'image');
+    }
+
+    function handleCreateFile(e) { if (e.target.files[0]) processCreateFile(e.target.files[0]); }
+
+    function processCreateFile(file) {
+        if (!file.type.startsWith('image/')) return;
+        createState.imageType = file.type;
+        const reader = new FileReader();
+        reader.onload = e => {
+            createState.imageBase64 = e.target.result.split(',')[1];
+            document.getElementById('preview-img').src = e.target.result;
+            document.getElementById('image-preview').classList.remove('hidden');
+            document.getElementById('drop-zone').classList.add('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function removeCreateImage() {
+        createState.imageBase64 = null;
+        createState.imageType = null;
+        document.getElementById('image-preview').classList.add('hidden');
+        document.getElementById('drop-zone').classList.remove('hidden');
+        document.getElementById('file-input').value = '';
+    }
+
+    async function generateAndSaveQuiz() {
+        const title = document.getElementById('quiz-title').value.trim() || 'Test fără titlu';
+        const text = document.getElementById('source-text')?.value?.trim();
+        const hasImage = createState.tab === 'image' && createState.imageBase64;
+        const hasText = createState.tab === 'text' && text;
+
+        if (!hasImage && !hasText) {
+            alert(createState.tab === 'image' ? 'Încarcă o imagine.' : 'Lipește textul lecției.');
+            return;
+        }
+
+        const numQ = document.getElementById('num-questions').value;
+        const diff = document.getElementById('difficulty').value;
+
+        document.getElementById('btn-generate').classList.add('hidden');
+        document.getElementById('create-loading').classList.remove('hidden');
+
+        const prompt = `Generează ${numQ} întrebări grilă (nivel: ${diff}) bazate STRICT pe ${hasImage ? 'conținutul din imagine' : 'textul de mai jos'}. Fiecare întrebare are exact 4 variante (A, B, C, D) și un singur răspuns corect.
+
+Răspunde DOAR cu un JSON valid, fără alt text, în formatul:
+[{"question":"...","options":["A","B","C","D"],"correct":0,"explanation":"..."}]`;
+
+        let messageContent;
+        if (hasImage) {
+            messageContent = [
+                { type: 'image', source: { type: 'base64', media_type: createState.imageType, data: createState.imageBase64 } },
+                { type: 'text', text: prompt }
+            ];
+        } else {
+            messageContent = prompt + '\n\nTextul:\n' + text;
+        }
+
+        try {
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': ANTHROPIC_KEY,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-20250514',
+                    max_tokens: 4096,
+                    messages: [{ role: 'user', content: messageContent }]
+                })
+            });
+
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error.message);
+
+            const content = data.content[0].text;
+            const jsonMatch = content.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) throw new Error('Format invalid');
+
+            const questions = JSON.parse(jsonMatch[0]);
+
+            // Save to Supabase
+            const { data: quiz, error } = await sb.from('quizzes').insert({
+                title,
+                questions,
+                num_questions: parseInt(numQ),
+                difficulty: diff
+            }).select().single();
+
+            if (error) throw new Error(error.message);
+
+            location.hash = '#/quiz/' + quiz.id;
+
+        } catch (err) {
+            alert('Eroare: ' + err.message);
+            document.getElementById('btn-generate').classList.remove('hidden');
+            document.getElementById('create-loading').classList.add('hidden');
+        }
+    }
+
+    // ==================== QUIZ PREVIEW (TEACHER) ====================
+    async function renderQuizPreview(id) {
+        app.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto"></div></div>';
+        const { data: quiz } = await sb.from('quizzes').select('*').eq('id', id).single();
+        if (!quiz) { app.innerHTML = '<p class="text-red-400">Test negăsit.</p>'; return; }
+
+        const testLink = location.origin + location.pathname + '#/test/' + quiz.id;
+
+        let questionsHtml = quiz.questions.map((q, qi) => {
+            let optsHtml = q.options.map((opt, oi) => {
+                const isCorrect = oi === q.correct;
+                return `
+                <div class="flex items-center gap-2 p-2 rounded-lg bg-gray-900 border ${isCorrect ? 'border-gray-700' : 'border-transparent'}">
+                    <label class="flex items-center gap-1 shrink-0 cursor-pointer" title="Setează ca răspuns corect">
+                        <input type="radio" name="correct-${qi}" value="${oi}" ${isCorrect ? 'checked' : ''}
+                            onchange="editCorrect(${qi},${oi})"
+                            class="accent-green-500">
+                        <span class="w-6 h-6 rounded-full border border-gray-600 text-gray-400 flex items-center justify-center text-xs font-medium">${String.fromCharCode(65+oi)}</span>
+                    </label>
+                    <input type="text" value="${opt.replace(/"/g, '&quot;')}" oninput="editOption(${qi},${oi},this.value)"
+                        class="edit-input flex-1 text-sm text-gray-200 w-full">
+                </div>`;
+            }).join('');
+
+            return `
+                <div class="p-4 bg-gray-900/50 rounded-xl border border-gray-800 fade-in">
+                    <div class="flex items-start gap-2 mb-3">
+                        <span class="text-indigo-400 font-medium text-sm shrink-0">${qi+1}.</span>
+                        <input type="text" value="${q.question.replace(/"/g, '&quot;')}" oninput="editQuestion(${qi},this.value)"
+                            class="edit-input flex-1 text-sm font-medium text-white w-full">
+                    </div>
+                    <div class="space-y-2 ml-5">${optsHtml}</div>
+                    <p class="ml-5 mt-2 text-xs text-gray-600">Radio = răspuns corect · Click pe text pentru a edita</p>
+                </div>`;
+        }).join('');
+
+        app.innerHTML = `
+            <div class="fade-in">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-lg font-semibold text-white">${quiz.title}</h2>
+                    <span class="text-xs text-gray-500">${quiz.questions.length} intrebari · ${quiz.difficulty}</span>
+                </div>
+
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+                    <p class="text-xs text-gray-500 mb-2">Link pentru elevi</p>
+                    <div class="flex items-center gap-2">
+                        <input id="test-link" type="text" value="${testLink}" readonly
+                            class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-indigo-400 font-mono">
+                        <button onclick="copyLink()" id="btn-copy"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded-lg transition-colors shrink-0">Copiază</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-medium text-gray-300">Întrebări <span class="text-gray-500">(editează direct textul sau schimbă radio-ul)</span></h3>
+                </div>
+
+                <div id="questions-list" class="space-y-3">${questionsHtml}</div>
+
+                <!-- Sticky save bar -->
+                <div id="save-bar" class="hidden sticky bottom-4 mt-6 bg-green-600 hover:bg-green-500 rounded-xl transition-colors cursor-pointer text-center py-3" onclick="saveEdits('${quiz.id}')">
+                    <span id="save-bar-text" class="text-white font-semibold text-sm">Salvează modificările</span>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <a href="#/quiz/${quiz.id}/results" class="flex-1 text-center bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition-colors text-sm">Vezi rezultate elevi</a>
+                    <button onclick="deleteQuiz('${quiz.id}')" class="bg-red-900/30 hover:bg-red-900/50 text-red-400 text-sm px-4 py-3 rounded-xl transition-colors">Șterge</button>
+                </div>
+            </div>`;
+
+        window._editQuiz = JSON.parse(JSON.stringify(quiz));
+        window._editDirty = false;
+    }
+
+    function editQuestion(qi, val) { window._editQuiz.questions[qi].question = val; showSaveBtn(); }
+    function editOption(qi, oi, val) { window._editQuiz.questions[qi].options[oi] = val; showSaveBtn(); }
+    function editCorrect(qi, val) { window._editQuiz.questions[qi].correct = typeof val === 'number' ? val : parseInt(val); showSaveBtn(); }
+    function showSaveBtn() { document.getElementById('save-bar').classList.remove('hidden'); }
+
+    async function saveEdits(id) {
+        const bar = document.getElementById('save-bar');
+        const txt = document.getElementById('save-bar-text');
+        txt.textContent = 'Se salvează...';
+        await sb.from('quizzes').update({ questions: window._editQuiz.questions }).eq('id', id);
+        txt.textContent = 'Salvat!';
+        bar.classList.remove('bg-green-600', 'hover:bg-green-500');
+        bar.classList.add('bg-green-800');
+        setTimeout(() => { bar.classList.add('hidden'); bar.classList.remove('bg-green-800'); bar.classList.add('bg-green-600', 'hover:bg-green-500'); txt.textContent = 'Salvează modificările'; }, 2000);
+    }
+
+    function copyLink() {
+        const input = document.getElementById('test-link');
+        navigator.clipboard.writeText(input.value);
+        const btn = document.getElementById('btn-copy');
+        btn.textContent = 'Copiat!';
+        setTimeout(() => { btn.textContent = 'Copiază'; }, 1500);
+    }
+
+    async function deleteQuiz(id) {
+        if (!confirm('Sigur vrei să ștergi acest test?')) return;
+        await sb.from('submissions').delete().eq('quiz_id', id);
+        await sb.from('quizzes').delete().eq('id', id);
+        location.hash = '#/';
+    }
+
+    // ==================== STUDENT TEST ====================
+    let studentAnswers = {};
+    let studentQuiz = null;
+
+    async function renderStudentTest(id) {
+        app.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto"></div></div>';
+        const { data: quiz } = await sb.from('quizzes').select('*').eq('id', id).single();
+        if (!quiz) { app.innerHTML = '<p class="text-red-400 text-center py-10">Test negăsit.</p>'; return; }
+
+        studentQuiz = quiz;
+        studentAnswers = {};
+
+        app.innerHTML = `
+            <div class="max-w-2xl mx-auto fade-in">
+                <div class="text-center mb-8">
+                    <h2 class="text-xl font-bold text-white mb-1">${quiz.title}</h2>
+                    <p class="text-gray-400 text-sm">${quiz.questions.length} întrebări · ${quiz.difficulty}</p>
+                </div>
+
+                <!-- Student info form -->
+                <div id="student-form" class="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+                    <h3 class="text-sm font-medium text-gray-300 mb-4">Completează datele tale</h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Nume</label>
+                            <input id="s-last" type="text" placeholder="Popescu"
+                                class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Prenume</label>
+                            <input id="s-first" type="text" placeholder="Maria"
+                                class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100">
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-xs text-gray-500 mb-1">Clasa</label>
+                        <input id="s-class" type="text" placeholder="9A"
+                            class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100">
+                    </div>
+                    <button onclick="startStudentQuiz()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition-colors text-sm">Începe testul</button>
+                </div>
+
+                <!-- Quiz area (hidden until start) -->
+                <div id="student-quiz" class="hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <span id="s-progress" class="text-sm text-gray-400">0 / ${quiz.questions.length}</span>
+                    </div>
+                    <div id="s-questions"></div>
+                    <button onclick="submitStudentQuiz()" id="s-submit"
+                        class="mt-6 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
+                        Trimite răspunsurile
+                    </button>
+                </div>
+
+                <!-- Results (hidden until submit) -->
+                <div id="student-result" class="hidden"></div>
+            </div>`;
+    }
+
+    function startStudentQuiz() {
+        const first = document.getElementById('s-first').value.trim();
+        const last = document.getElementById('s-last').value.trim();
+        const cls = document.getElementById('s-class').value.trim();
+        if (!first || !last || !cls) { alert('Completează toate câmpurile.'); return; }
+
+        document.getElementById('student-form').classList.add('hidden');
+        document.getElementById('student-quiz').classList.remove('hidden');
+
+        const container = document.getElementById('s-questions');
+        container.innerHTML = studentQuiz.questions.map((q, qi) => {
+            let optsHtml = q.options.map((opt, oi) => `
+                <button onclick="selectStudentAnswer(${qi},${oi})"
+                    id="sq${qi}-o${oi}"
+                    class="option-btn w-full text-left p-3 rounded-lg border border-gray-700 bg-gray-900 text-sm text-gray-200 hover:border-gray-500 mb-2 flex items-center gap-3">
+                    <span class="w-7 h-7 rounded-full border border-gray-600 flex items-center justify-center text-xs font-medium shrink-0">${String.fromCharCode(65+oi)}</span>
+                    <span>${opt}</span>
+                </button>`).join('');
+
+            return `
+                <div class="mb-6 fade-in">
+                    <p class="text-sm font-medium text-white mb-3">
+                        <span class="text-indigo-400 mr-2">${qi+1}.</span>${q.question}
+                    </p>
+                    ${optsHtml}
+                    <div id="sq${qi}-exp" class="hidden mt-2 p-3 rounded-lg bg-gray-800 text-xs text-gray-300"></div>
+                </div>`;
+        }).join('');
+    }
+
+    function selectStudentAnswer(qi, oi) {
+        if (document.getElementById('s-submit').classList.contains('hidden')) return;
+        studentAnswers[qi] = oi;
+        studentQuiz.questions[qi].options.forEach((_, i) => {
+            document.getElementById(`sq${qi}-o${i}`).classList.remove('selected');
+        });
+        document.getElementById(`sq${qi}-o${oi}`).classList.add('selected');
+        document.getElementById('s-progress').textContent = `${Object.keys(studentAnswers).length} / ${studentQuiz.questions.length}`;
+    }
+
+    async function submitStudentQuiz() {
+        const total = studentQuiz.questions.length;
+        if (Object.keys(studentAnswers).length < total) {
+            alert(`Răspunde la toate întrebările (${Object.keys(studentAnswers).length}/${total})`);
+            return;
+        }
+
+        let score = 0;
+        studentQuiz.questions.forEach((q, qi) => {
+            const choice = studentAnswers[qi];
+            const correct = choice === q.correct;
+            if (correct) score++;
+
+            q.options.forEach((_, oi) => {
+                const btn = document.getElementById(`sq${qi}-o${oi}`);
+                btn.classList.remove('selected');
+                if (oi === q.correct) btn.classList.add('correct');
+                else if (oi === choice && !correct) btn.classList.add('wrong');
+            });
+
+            const exp = document.getElementById(`sq${qi}-exp`);
+            exp.classList.remove('hidden');
+            exp.innerHTML = `${correct ? '✓ Corect' : '✗ Greșit'} — ${q.explanation}`;
+        });
+
+        document.getElementById('s-submit').classList.add('hidden');
+
+        // Save to Supabase
+        await sb.from('submissions').insert({
+            quiz_id: studentQuiz.id,
+            first_name: document.getElementById('s-first').value.trim(),
+            last_name: document.getElementById('s-last').value.trim(),
+            class_name: document.getElementById('s-class').value.trim(),
+            answers: studentAnswers,
+            score,
+            total
+        });
+
+        const pct = Math.round((score / total) * 100);
+        let msg = pct === 100 ? 'Perfect!' : pct >= 80 ? 'Foarte bine!' : pct >= 60 ? 'Bine, mai recitește.' : 'Mai ai de lucru.';
+
+        document.getElementById('student-result').classList.remove('hidden');
+        document.getElementById('student-result').innerHTML = `
+            <div class="p-6 rounded-xl border border-gray-800 bg-gray-900 text-center fade-in mt-6">
+                <div class="text-4xl font-bold text-indigo-400 mb-2">${score} / ${total} (${pct}%)</div>
+                <p class="text-gray-400">${msg}</p>
+                <p class="text-xs text-gray-600 mt-3">Rezultatul a fost trimis profesorului.</p>
+            </div>`;
+
+        document.getElementById('student-result').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ==================== RESULTS (TEACHER) ====================
+    let realtimeSub = null;
+
+    async function renderResults(quizId) {
+        app.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto"></div></div>';
+
+        const { data: quiz } = await sb.from('quizzes').select('*').eq('id', quizId).single();
+        if (!quiz) { app.innerHTML = '<p class="text-red-400">Test negăsit.</p>'; return; }
+
+        const { data: subs } = await sb.from('submissions').select('*').eq('quiz_id', quizId).order('created_at', { ascending: false });
+
+        renderResultsPage(quiz, subs || []);
+
+        // Realtime subscription
+        if (realtimeSub) realtimeSub.unsubscribe();
+        realtimeSub = sb.channel('results-' + quizId)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'submissions', filter: 'quiz_id=eq.' + quizId },
+                async () => {
+                    const { data: fresh } = await sb.from('submissions').select('*').eq('quiz_id', quizId).order('created_at', { ascending: false });
+                    renderResultsPage(quiz, fresh || []);
+                }
+            ).subscribe();
+    }
+
+    function renderResultsPage(quiz, subs) {
+        const avg = subs.length ? Math.round(subs.reduce((a, s) => a + (s.score / s.total) * 100, 0) / subs.length) : 0;
+
+        let tableRows = subs.map((s, i) => {
+            const pct = Math.round((s.score / s.total) * 100);
+            const color = pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-red-400';
+            const time = new Date(s.created_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+
+            // Per-question results
+            let detailCells = quiz.questions.map((q, qi) => {
+                const ans = s.answers[qi];
+                const correct = ans === q.correct;
+                return `<td class="px-2 py-2 text-center text-xs ${correct ? 'text-green-400' : 'text-red-400'}">${correct ? '✓' : '✗'}</td>`;
+            }).join('');
+
+            return `
+                <tr class="border-b border-gray-800 hover:bg-gray-900/50 ${i === 0 ? 'fade-in' : ''}">
+                    <td class="px-3 py-3 text-sm text-white font-medium">${s.last_name} ${s.first_name}</td>
+                    <td class="px-3 py-3 text-sm text-gray-400">${s.class_name}</td>
+                    <td class="px-3 py-3 text-sm font-semibold ${color}">${s.score}/${s.total} (${pct}%)</td>
+                    ${detailCells}
+                    <td class="px-3 py-3 text-xs text-gray-500">${time}</td>
+                </tr>`;
+        }).join('');
+
+        let questionHeaders = quiz.questions.map((_, qi) =>
+            `<th class="px-2 py-2 text-xs text-gray-500 font-normal">${qi+1}</th>`
+        ).join('');
+
+        app.innerHTML = `
+            <div class="fade-in">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <a href="#/quiz/${quiz.id}" class="text-sm text-gray-500 hover:text-gray-300 transition-colors">← ${quiz.title}</a>
+                        <h2 class="text-lg font-semibold text-white mt-1">Rezultate</h2>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="text-right">
+                            <div class="text-2xl font-bold text-indigo-400">${subs.length}</div>
+                            <div class="text-xs text-gray-500">răspunsuri</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold ${avg >= 70 ? 'text-green-400' : 'text-yellow-400'}">${avg}%</div>
+                            <div class="text-xs text-gray-500">medie</div>
+                        </div>
+                        <div class="w-2 h-2 rounded-full bg-green-500 pulse" title="Actualizare în timp real"></div>
+                    </div>
+                </div>
+
+                ${subs.length === 0 ? `
+                    <div class="text-center py-16 bg-gray-900 rounded-xl border border-gray-800">
+                        <div class="text-3xl mb-3">⏳</div>
+                        <p class="text-gray-400">Niciun elev nu a completat testul încă.</p>
+                        <p class="text-gray-600 text-sm mt-1">Rezultatele apar automat când elevii trimit răspunsurile.</p>
+                    </div>` : `
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b border-gray-800">
+                                    <th class="px-3 py-2 text-left text-xs text-gray-500 font-medium">Elev</th>
+                                    <th class="px-3 py-2 text-left text-xs text-gray-500 font-medium">Clasa</th>
+                                    <th class="px-3 py-2 text-left text-xs text-gray-500 font-medium">Scor</th>
+                                    ${questionHeaders}
+                                    <th class="px-3 py-2 text-left text-xs text-gray-500 font-medium">Ora</th>
+                                </tr>
+                            </thead>
+                            <tbody>${tableRows}</tbody>
+                        </table>
+                    </div>`}
+            </div>`;
+    }
+
+    </script>
+</body>
+</html>
